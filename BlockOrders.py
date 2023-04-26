@@ -3,6 +3,7 @@ import glob
 import logging
 import time
 
+import feedparser
 import requests
 import waybackpy
 from bs4 import BeautifulSoup
@@ -12,6 +13,24 @@ SERVER_URL = 'https://dot.gov.in'
 PAGE_URL = '/blocking-notificationsinstructions-internet-service-licensees-under-court-orders'
 FEED_URL = 'https://dot.gov.in/taxonomy/term/2883/feed'
 BLOCK_ORDER_PAGES = 20
+DATA_FILE = "data/BlockingOrders.json"
+
+
+def incremental_feed_update():
+    logging.log(logging.INFO, 'start of incremental_feed_update')
+    feed = feedparser.parse(FEED_URL)
+    new_orders = []
+    with open(DATA_FILE, "r") as file:
+        data = json.load(file)
+    for entry in feed.entries:
+        order = [element for element in data if element['link'] == entry.link]
+        if (len(order) > 0):
+            break
+        else:
+            new_orders.append(entry.link)
+    logging.log(logging.INFO, "New orders count " + str(len(new_orders)))
+    if (len(new_orders) > 0):
+        get_all_block_orders()
 
 
 def write_json(new_data, filename):
@@ -21,7 +40,7 @@ def write_json(new_data, filename):
 
 def archive_url(url):
     logging.log(logging.INFO, 'archiving url ' + url)
-    user_agent = "Mozilla/5.0 (Windows NT 5.1; rv:40.0) Gecko/20100101 Firefox/40.0"
+    user_agent = "Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36"
     wayback = waybackpy.Url(url, user_agent)
     try:
         oldest_archive = wayback.oldest()
@@ -39,7 +58,7 @@ def archive_url(url):
         return 'NO_ARCHIVE_AVAILABLE'
 
 
-def get_all_block_orders():
+def get_all_block_orders(incremental_feed_update=True):
     logging.log(logging.INFO, 'start of get_all_block_orders')
     blockorders = []
 
@@ -48,6 +67,13 @@ def get_all_block_orders():
         url = SERVER_URL + PAGE_URL + '?page=' + str(page)
         logging.log(logging.DEBUG, url)
         soup = BeautifulSoup(requests.get(url).text, 'lxml')
+        if (page == 0 and not incremental_feed_update):
+            try:
+                BLOCK_ORDER_PAGES = soup.find(
+                    'li', attrs={'class': 'pager-last last'}).find('a')['href'].split('=')[1]
+            except:
+                BLOCK_ORDER_PAGES = 20
+
         orders = soup.find('div', attrs={'role': 'main'}).find_all(
             'div', attrs={'class': 'node-data-services'})
         for article in orders:
@@ -69,21 +95,32 @@ def get_all_block_orders():
             except:
                 logging.log(logging.INFO, 'Exception processing order')
                 pass
+        if not incremental_feed_update:
+            write_json(blockorders, 'BlockOrders_' + str(page) + '.json')
 
-        write_json(blockorders, 'BlockOrders_' + str(page) + '.json')
+    if not incremental_feed_update:
+        json_objects = []
+        for filename in glob.glob("BlockOrders_*.json"):
+            with open(filename, "r") as f:
+                data = json.load(f)
+                json_objects += data
+    else:
+        logging.log(logging.INFO, "Incremental update")
+        with open(DATA_FILE, "r") as file:
+            data = json.load(file)
+        json_objects = blockorders + data
 
-    json_objects = []
-    for filename in glob.glob("BlockOrders_*.json"):
-        with open(filename, "r") as f:
-            data = json.load(f)
-            json_objects += data
+        # Deduplicate the list
+        json_objects = [dict(t)
+                        for t in {tuple(d.items()) for d in json_objects}]
 
-    with open("BlockingOrders.json", "w") as file:
+    with open(DATA_FILE, "w") as file:
         json.dump(json_objects, file)
 
 
 def main():
-    get_all_block_orders()
+    # get_all_block_orders(incremental_feed_update=False)
+    incremental_feed_update()
 
 
 if __name__ == "__main__":

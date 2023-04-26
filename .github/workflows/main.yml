@@ -1,0 +1,36 @@
+name: Block Order Incremental Update
+
+on:
+  push:
+    branches: ["main"]
+    paths: ["BlockOrders.py"]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 0" # Run every Sunday at midnight UTC
+
+jobs:
+  run:
+    name: Run BlockOrders
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3.5.2
+      - uses: actions/cache@v3.3.1
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Set up Python
+        uses: actions/setup-python@v4.5.0
+        with:
+          python-version: 3.9
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Archiver
+        run: python BlockOrders.py
+      - uses: stefanzweifel/git-auto-commit-action@v4.16.0

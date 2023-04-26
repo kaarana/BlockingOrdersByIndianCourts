@@ -1,3 +1,4 @@
 waybackpy
 lxml
 bs4
+feedparser
