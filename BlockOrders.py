@@ -1,4 +1,5 @@
 import json
+import glob
 import logging
 import time
 
@@ -42,14 +43,13 @@ def get_all_block_orders():
     logging.log(logging.INFO, 'start of get_all_block_orders')
     blockorders = []
 
-    for page in range(1, BLOCK_ORDER_PAGES + 1):
+    for page in range(0, BLOCK_ORDER_PAGES + 1):
         logging.log(logging.DEBUG, page)
         url = SERVER_URL + PAGE_URL + '?page=' + str(page)
         logging.log(logging.DEBUG, url)
         soup = BeautifulSoup(requests.get(url).text, 'lxml')
         orders = soup.find('div', attrs={'role': 'main'}).find_all(
             'div', attrs={'class': 'node-data-services'})
-        # logging.log(logging.DEBUG, orders)
         for article in orders:
             order = {}
             try:
@@ -70,7 +70,16 @@ def get_all_block_orders():
                 logging.log(logging.INFO, 'Exception processing order')
                 pass
 
-    write_json(blockorders, 'BlockOrders.json')
+        write_json(blockorders, 'BlockOrders_' + str(page) + '.json')
+
+    json_objects = []
+    for filename in glob.glob("BlockOrders_*.json"):
+        with open(filename, "r") as f:
+            data = json.load(f)
+            json_objects += data
+
+    with open("BlockingOrders.json", "w") as file:
+        json.dump(json_objects, file)
 
 
 def main():
